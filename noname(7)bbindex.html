@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Request GPS & Camera</title>
+  <style>
+    body { font-family: system-ui, Arial, sans-serif; max-width:760px; margin:24px auto; line-height:1.45; }
+    button { margin:8px 6px 12px 0; padding:10px 14px; font-size:15px; }
+    #status { margin:12px 0; padding:10px; border-radius:6px; background:#f3f3f3; }
+    #videoPreview { width:100%; max-width:480px; height:auto; background:#000; border-radius:6px; }
+    .label { font-weight:600; margin-top:8px; display:block; }
+    pre { background:#111; color:#eee; padding:12px; border-radius:6px; overflow:auto; }
+  </style>
+</head>
+<body>
+  <h1>Allow GPS & Camera</h1>
+  <p>Click the buttons below to request location (GPS) and camera access. Remember: this must run over <strong>HTTPS</strong> or from <code>localhost</code>.</p>
+
+  <div>
+    <button id="btnRequestGeo">Request GPS (Geolocation)</button>
+    <button id="btnRequestCamera">Request Camera</button>
+    <button id="btnStopCamera">Stop Camera</button>
+  </div>
+
+  <div id="status">
+    <div><span class="label">Geolocation permission:</span><span id="geoPerm">unknown</span></div>
+    <div><span class="label">Camera permission:</span><span id="camPerm">unknown</span></div>
+  </div>
+
+  <div>
+    <span class="label">Coordinates (if granted):</span>
+    <pre id="coords">--</pre>
+  </div>
+
+  <div>
+    <span class="label">Camera preview (if granted):</span>
+    <video id="videoPreview" autoplay playsinline></video>
+  </div>
+
+  <script>
+    const btnGeo = document.getElementById('btnRequestGeo');
+    const btnCamera = document.getElementById('btnRequestCamera');
+    const btnStopCamera = document.getElementById('btnStopCamera');
+    const geoPermEl = document.getElementById('geoPerm');
+    const camPermEl = document.getElementById('camPerm');
+    const coordsEl = document.getElementById('coords');
+    const video = document.getElementById('videoPreview');
+
+    let currentStream = null;
+    let geoWatchId = null;
+
+    // Utility: update permission text safely
+    function updatePermission(el, text) { el.textContent = text; }
+
+    // ----- Geolocation -----
+    async function requestGeolocation() {
+      if (!('geolocation' in navigator)) {
+        updatePermission(geoPermEl, 'not supported');
+        coordsEl.textContent = 'Geolocation API not available in this browser.';
+        return;
+      }
+
+      try {
+        // Check permission state via Permissions API if available
+        if (navigator.permissions && navigator.permissions.query) {
+          try {
+            const p = await navigator.permissions.query({ name: 'geolocation' });
+            updatePermission(geoPermEl, p.state);
+            // react to future changes
+            p.onchange = () => updatePermission(geoPermEl, p.state);
+          } catch (err) {
+            // ignore permission query errors
+          }
+        }
+
+        // Request current position once (this triggers the browser permission prompt)
+        navigator.geolocation.getCurrentPosition(
+          pos => {
+            updatePermission(geoPermEl, 'granted');
+            const { latitude, longitude, accuracy } = pos.coords;
+            coordsEl.textContent = `Latitude: ${latitude}\nLongitude: ${longitude}\nAccuracy: ${accuracy} meters\nTimestamp: ${new Date(pos.timestamp).toLocaleString()}`;
+          },
+          err => {
+            updatePermission(geoPermEl, 'denied or unavailable');
+            coordsEl.textContent = `Error retrieving location: ${err.message} (code ${err.code})`;
+          },
+          { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+        );
+
+        // Optionally start watching position (uncomment to use)
+        // geoWatchId = navigator.geolocation.watchPosition(...)
+
+      } catch (error) {
+        coordsEl.textContent = 'Error requesting geolocation: ' + error;
+      }
+    }
+
+    // ----- Camera -----
+    async function requestCamera() {
+      if (!('mediaDevices' in navigator) || !navigator.mediaDevices.getUserMedia) {
+        updatePermission(camPermEl, 'not supported');
+        alert('Camera API / getUserMedia not supported in this browser.');
+        return;
+      }
+
+      try {
+        // Try query permission status (not supported in all browsers for 'camera')
+        if (navigator.permissions && navigator.permissions.query) {
+          try {
+            // note: some browsers use 'camera', some don't implement this name
+            const p = await navigator.permissions.query({ name: 'camera' });
+            updatePermission(camPermEl, p.state);
+            p.onchange = () => updatePermission(camPermEl, p.state);
+          } catch (e) {
+            // ignore if
